@@ -87,9 +87,27 @@ jobs:
             --head "$branch"
 
           gh pr review "$branch" --approve
-          gh pr merge "$branch" --squash --delete-branch
+          gh pr merge "$branch" --auto --squash --delete-branch
 
-      - name: Pull merged main and tag
+      - name: Wait for PR to merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="release/v${{ steps.version.outputs.version }}"
+          echo "Waiting for status checks and auto-merge..."
+          while true; do
+            state=$(gh pr view "$branch" --json state -q '.state')
+            if [ "$state" = "MERGED" ]; then
+              echo "PR merged successfully"
+              break
+            elif [ "$state" = "CLOSED" ]; then
+              echo "PR was closed without merging"
+              exit 1
+            fi
+            sleep 30
+          done
+
+      - name: Tag merged main
         run: |
           version="${{ steps.version.outputs.version }}"
           git checkout main
