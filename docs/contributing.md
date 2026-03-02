@@ -175,7 +175,7 @@ class TestMyModel:
 ## Development Setup
 
 ```bash
-git clone https://github.com/ltorres6/osipy.git
+git clone https://github.com/OSIPI/osipy.git
 cd osipy
 python -m venv .venv
 source .venv/bin/activate  # Linux/macOS

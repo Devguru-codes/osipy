@@ -207,7 +207,7 @@ Export analysis results in Brain Imaging Data Structure (BIDS) derivatives forma
             {
                 "Name": "osipy",
                 "Version": osipy.__version__,
-                "CodeURL": "https://github.com/ltorres6/osipy"
+                "CodeURL": "https://github.com/OSIPI/osipy"
             }
         ],
         "SourceDatasets": [

@@ -106,7 +106,7 @@ def export_bids(
                 {
                     "Name": "osipy",
                     "Version": __version__,
-                    "CodeURL": "https://github.com/osipy/osipy",
+                    "CodeURL": "https://github.com/OSIPI/osipy",
                 }
             ],
         }

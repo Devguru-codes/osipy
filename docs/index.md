@@ -11,7 +11,7 @@ Unified OSIPI-compliant MRI perfusion analysis.
 { .hero-tagline }
 
 [Get Started](tutorials/getting-started.md){ .md-button .md-button--primary }
-[View on GitHub](https://github.com/ltorres6/osipy){ .md-button }
+[View on GitHub](https://github.com/OSIPI/osipy){ .md-button }
 
 </div>
 
@@ -168,7 +168,7 @@ Bi-exponential diffusion fitting: segmented, full, and Bayesian strategies for D
 === "Development"
 
     ```bash
-    git clone https://github.com/ltorres6/osipy.git
+    git clone https://github.com/OSIPI/osipy.git
     cd osipy
     pip install -e ".[dev]"
     ```

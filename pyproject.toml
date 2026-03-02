@@ -69,9 +69,9 @@ gpu = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/osipy/osipy"
+Homepage = "https://github.com/OSIPI/osipy"
 Documentation = "https://osipy.readthedocs.io"
-Repository = "https://github.com/osipy/osipy"
+Repository = "https://github.com/OSIPI/osipy"
 
 [project.scripts]
 osipy = "osipy.cli.main:main"
