@@ -1,116 +1,169 @@
-site_name: ''
-repo_url: https://github.com/OSIPI/pypi
+site_name: osipy
+site_description: OSIPI-compliant MRI perfusion analysis library
+site_url: https://osipy.readthedocs.io
+repo_url: https://github.com/ltorres6/osipy
+repo_name: ltorres6/osipy
+
 theme:
   name: material
-  logo: img/osipi.png
-  icon:
-    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/link
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch-off
+        name: Switch to system preference
   features:
-    - header.autohide
-    - navigation.tabs
-    - navigation.tabs.sticky
-    - navigation.instant
-    - navigation.instant.progress
-    - navigation.sections
+    - content.action.edit
+    - content.action.view
+    - content.code.annotate
+    - content.code.copy
+    - content.tabs.link
+    - content.tooltips
     - navigation.footer
     - navigation.indexes
-    - toc.integrate
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.path
+    - navigation.sections
+    - navigation.tabs
+    - navigation.tabs.sticky
     - navigation.top
-    - search.suggest
+    - navigation.tracking
     - search.highlight
     - search.share
-    - content.tabs.link
-    - content.code.annotation
-    - content.code.copy
-    - content.code.select
-    - tables
-
-  language: en
-  palette:
-    - scheme: default
-      primary: teal
-      accent: purple
-      toggle:
-        icon: material/weather-sunny
-        name: Switch to dark mode
-    - scheme: slate
-      toggle:
-        icon: material/weather-night
-        name: Switch to dark mode
-      primary: teal
-      accent: lime
-
-plugins:
-  - search
-  - mkdocstrings:
-      handlers:
-        python:
-          paths: ["src"]
-  - gallery:
-      examples_dirs: docs/examples
-      gallery_dirs: docs/generated/gallery
+    - search.suggest
+    - toc.follow
+  font:
+    text: Roboto
+    code: Roboto Mono
+  icon:
+    logo: material/brain
+    repo: fontawesome/brands/github
 
 extra_css:
   - stylesheets/extra.css
 
-nav:
-  - Home: index.md
-  - User Guide:
-      - Overview: user-guide/index.md
-      - Installation: user-guide/install.md
-      - Simulating data:
-          - Overview: user-guide/simulate.md
-          - Simulate: user-guide/gen_aif.md
-      - Fitting data:
-          - Overview: user-guide/fitting.md
-          - Fit: user-guide/fit_tissue.md
-
-  - About: about/index.md
-  - Developer Guide: contribution/index.md
-  - References:
-      - references/index.md
-      - Index:
-          - references/models/index.md
-          - AIF models:
-              - references/models/aif_models/index.md
-              - osipi.aif_parker: references/models/aif_models/aif_parker.md
-              - osipi.aif_georgiou: references/models/aif_models/aif_georgiou.md
-              - osipi.aif_weinmann: references/models/aif_models/aif_weinmann.md
-          - Tissue models :
-              - references/models/tissue_models/index.md
-              - osipi.tofts: references/models/tissue_models/tofts.md
-              - osipi.extended_tofts: references/models/tissue_models/extended_tofts.md
-
-  - Examples: generated/gallery
-
+plugins:
+  - search
+  - gen-files:
+      scripts:
+        - docs/gen_ref_pages.py
+        - docs/gen_config_docs.py
+  - literate-nav:
+      nav_file: SUMMARY.md
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.]
+          options:
+            docstring_style: numpy
+            docstring_section_style: spacy
+            show_source: false
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            members_order: source
+            merge_init_into_class: true
+            separate_signature: true
+            signature_crossrefs: true
 
 markdown_extensions:
-  - admonition
-  - codehilite
-  - footnotes
-  - meta
-  - toc:
-      permalink: true
-  - tables
-  - pymdownx.arithmatex
-  - pymdownx.betterem:
-      smart_enable: all
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
       pygments_lang_class: true
-  - pymdownx.caret
-  - pymdownx.critic
-  - pymdownx.details
   - pymdownx.inlinehilite
-  - pymdownx.magiclink
-  - pymdownx.mark
-  - pymdownx.smartsymbols
-  - pymdownx.superfences
-  - pymdownx.details
-  - pymdownx.tasklist:
-      custom_checkbox: true
-  - pymdownx.tilde
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
-        alternate_style: true
+      alternate_style: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.mark
+  - pymdownx.critic
+  - pymdownx.keys
+  - pymdownx.snippets
+  - admonition
+  - pymdownx.details
   - attr_list
+  - md_in_html
+  - abbr
+  - footnotes
+  - def_list
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - javascripts/details-close.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
+nav:
+  - Home: index.md
+  - Tutorials:
+    - tutorials/index.md
+    - Getting Started: tutorials/getting-started.md
+    - DCE-MRI Analysis: tutorials/dce-analysis.md
+    - ASL CBF Quantification: tutorials/asl-analysis.md
+    - IVIM Analysis: tutorials/ivim-analysis.md
+    - DSC-MRI Analysis: tutorials/dsc-analysis.md
+  - How-To Guides:
+    - how-to/index.md
+    - Data Loading:
+      - Load Perfusion Data: how-to/load-perfusion-data.md
+    - AIF Selection:
+      - Use Custom AIF: how-to/use-custom-aif.md
+      - Choose Population AIF: how-to/choose-population-aif.md
+    - GPU Acceleration:
+      - Configure GPU/CPU Backend: how-to/enable-gpu-acceleration.md
+    - Export & Visualization:
+      - Export BIDS: how-to/export-bids.md
+      - Visualize Maps: how-to/visualize-parameter-maps.md
+    - Model Fitting:
+      - Compare Models: how-to/fit-multiple-models.md
+      - Handle Failures: how-to/handle-fitting-failures.md
+    - Pipelines:
+      - Run Pipeline from YAML (CLI): how-to/run-pipeline-cli.md
+      - Run Complete Pipeline (Python API): how-to/run-complete-pipeline.md
+    - Extension:
+      - Add Pharmacokinetic Model: how-to/add-pharmacokinetic-model.md
+      - Add ASL Model: how-to/add-asl-quantification-model.md
+      - Add Deconvolution Method: how-to/add-deconvolution-method.md
+      - Add BBB ASL Model: how-to/add-bbb-asl-model.md
+  - Reference: reference/
+  - Explanation:
+    - explanation/index.md
+    - Software Architecture:
+      - Architecture Overview: explanation/architecture.md
+      - xp Abstraction Pattern: explanation/xp-abstraction.md
+      - OSIPI Standards: explanation/osipi-standards.md
+    - MRI Physics:
+      - Pharmacokinetic Models: explanation/pharmacokinetic-models.md
+      - ASL Physics: explanation/asl-physics.md
+      - IVIM Theory: explanation/ivim-theory.md
+      - DSC Deconvolution: explanation/dsc-deconvolution.md
+  - Contributing:
+    - contributing.md
+  - Product Requirements: prd.md

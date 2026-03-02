@@ -1,16 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
 .idea/
-/.venv
-dist
-pytest_cache
-src/osipi/__pycache__
-tests/__pycache__
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
 .coverage
-junit
-docs/build
-docs/source/generated
-docs/source/sg_execution_times.rst
-docs/site
-docs/generated
-site
-src/osipi.egg-info
-venv
+htmlcov/
+.tox/
+.nox/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Documentation
+docs/_build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Test fixtures (large files)
+tests/fixtures/osipi_dro/*.nii
+tests/fixtures/osipi_dro/*.nii.gz
+!tests/fixtures/osipi_dro/.gitkeep
+
+data/
+outputs/
+output/
+.claude/
+site/

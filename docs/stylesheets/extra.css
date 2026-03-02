@@ -1,36 +1,314 @@
-.md-header__button.md-logo img{
-height: 50px;
+/* osipy Custom Styles */
 
+/* Color scheme variables */
+:root {
+  --md-primary-fg-color: #673ab7;
+  --md-primary-fg-color--light: #9575cd;
+  --md-primary-fg-color--dark: #512da8;
+  --md-accent-fg-color: #ffc107;
 }
 
-
-.model-table {
-    display: table;
-    width: 100%;
-    border-collapse: collapse;
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #9575cd;
+  --md-primary-fg-color--light: #b39ddb;
+  --md-primary-fg-color--dark: #7e57c2;
+  --md-accent-fg-color: #ffca28;
 }
 
-.model-row {
-    display: table-row;
+/* Hero section styling */
+.md-typeset .hero {
+  text-align: center;
+  padding: 3rem 0 2rem;
 }
 
-.model-name, .model-description {
-    display: table-cell;
-    padding: 10px;
-    vertical-align: top;
+.md-typeset .hero h1 {
+  font-size: 3.5rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.75rem;
+  background: linear-gradient(135deg, var(--md-primary-fg-color), var(--md-primary-fg-color--light));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-.model-name {
-    width: 20%;
-    font-weight: bold;
+.md-typeset .hero .hero-tagline {
+  font-size: 1.3rem;
+  color: var(--md-default-fg-color--light);
+  margin-bottom: 1rem;
+  font-weight: 400;
 }
 
-.model-description {
-    width: 80%;
+/* Hide permalink on hero heading */
+.md-typeset .hero h1 .headerlink,
+.md-typeset .hero h1 a.headerlink {
+  display: none;
 }
 
-hr {
-    margin: 0;
-    border: 0;
-    border-top: 1px solid #ccc;
+/* Smaller hero buttons */
+.md-typeset .hero .md-button {
+  font-size: 0.75rem;
+  padding: 0.4rem 0.75rem;
+}
+
+/* Feature grid improvements */
+.md-typeset .grid.cards > ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  padding: 0;
+  margin: 1rem 0;
+}
+
+.md-typeset .grid.cards > ul > li {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.5rem;
+  padding: 1.25rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.md-typeset .grid.cards > ul > li:hover {
+  border-color: var(--md-primary-fg-color);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Code block improvements */
+.md-typeset pre > code {
+  font-size: 0.85rem;
+}
+
+.md-typeset code {
+  padding: 0.1em 0.3em;
+  border-radius: 0.25rem;
+}
+
+/* Admonition improvements for dark mode */
+[data-md-color-scheme="slate"] .md-typeset .admonition {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Table styling */
+.md-typeset table:not([class]) {
+  font-size: 0.85rem;
+  border-collapse: collapse;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.md-typeset table:not([class]) th {
+  background: var(--md-primary-fg-color);
+  color: white;
+  font-weight: 600;
+  padding: 0.75rem 1rem;
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) th {
+  background: var(--md-primary-fg-color--dark);
+}
+
+.md-typeset table:not([class]) td {
+  padding: 0.75rem 1rem;
+}
+
+/* Navigation tabs styling */
+.md-tabs__link {
+  font-weight: 500;
+}
+
+/* Footer tweaks */
+.md-footer-meta {
+  background: var(--md-primary-fg-color--dark);
+}
+
+/* Parameter map styling (for documentation examples) */
+.md-typeset .parameter-map {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.md-typeset .parameter-map .param {
+  background: var(--md-code-bg-color);
+  padding: 0.75rem;
+  border-radius: 0.25rem;
+  text-align: center;
+}
+
+.md-typeset .parameter-map .param strong {
+  display: block;
+  color: var(--md-primary-fg-color);
+  font-size: 0.9rem;
+}
+
+.md-typeset .parameter-map .param small {
+  color: var(--md-default-fg-color--light);
+}
+
+/* Modality badges */
+.md-typeset .modality-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-right: 0.5rem;
+}
+
+.md-typeset .modality-badge.dce {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.md-typeset .modality-badge.dsc {
+  background: #f3e5f5;
+  color: #7b1fa2;
+}
+
+.md-typeset .modality-badge.asl {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.md-typeset .modality-badge.ivim {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .modality-badge.dce {
+  background: #1565c0;
+  color: #e3f2fd;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .modality-badge.dsc {
+  background: #7b1fa2;
+  color: #f3e5f5;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .modality-badge.asl {
+  background: #2e7d32;
+  color: #e8f5e9;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .modality-badge.ivim {
+  background: #e65100;
+  color: #fff3e0;
+}
+
+/* Modality cards (landing page) */
+.md-typeset .modality-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.md-typeset .modality-card {
+  border-left: 4px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--md-code-bg-color);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.md-typeset .modality-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .modality-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.md-typeset .modality-card h3 {
+  margin-top: 0.5rem;
+}
+
+.md-typeset .modality-card.dce { border-left-color: #1565c0; }
+.md-typeset .modality-card.dsc { border-left-color: #7b1fa2; }
+.md-typeset .modality-card.asl { border-left-color: #2e7d32; }
+.md-typeset .modality-card.ivim { border-left-color: #e65100; }
+
+/* Quick start section */
+.md-typeset .quick-start {
+  background: var(--md-code-bg-color);
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+}
+
+.md-typeset .quick-start h3 {
+  margin-top: 0;
+}
+
+/* Equation styling */
+.md-typeset .arithmatex {
+  overflow-x: auto;
+}
+
+/* Status indicators */
+.md-typeset .status-ok {
+  color: #4caf50;
+}
+
+.md-typeset .status-warn {
+  color: #ff9800;
+}
+
+.md-typeset .status-error {
+  color: #f44336;
+}
+
+/* Installation tabs */
+.md-typeset .tabbed-set {
+  margin: 1rem 0;
+}
+
+/* Improve readability */
+.md-typeset p {
+  line-height: 1.7;
+}
+
+.md-typeset li {
+  line-height: 1.6;
+}
+
+/* Center images */
+.md-typeset img {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Widen content area — Material default is 61rem.
+   80rem gives ~30% more room for code blocks and tables while
+   keeping prose lines at a readable length on wide monitors.
+   See: https://github.com/squidfunk/mkdocs-material/discussions/6404 */
+.md-grid {
+  max-width: 80rem;
+}
+
+/* Responsive adjustments */
+@media screen and (max-width: 76.1875em) {
+  .md-typeset .hero h1 {
+    font-size: 2.75rem;
+  }
+}
+
+@media screen and (max-width: 44.9375em) {
+  .md-typeset .hero h1 {
+    font-size: 2.25rem;
+  }
+
+  .md-typeset .grid.cards > ul {
+    grid-template-columns: 1fr;
+  }
+
+  .md-typeset .modality-grid {
+    grid-template-columns: 1fr;
+  }
 }

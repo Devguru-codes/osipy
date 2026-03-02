@@ -1,101 +1,100 @@
-name: Publish to PyPI
-
+name: Release
 
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version to release'
+      bump:
+        description: "Version bump type"
         required: true
-        default: 'patch'
+        default: "patch"
         type: choice
         options:
-          - 'major'
-          - 'minor'
-          - 'patch'
+          - major
+          - minor
+          - patch
 
-      repository:
-        description: 'Repository to publish to'
+      target:
+        description: "Publish target"
         required: true
-        default: 'testpypi'
+        default: "testpypi"
         type: choice
         options:
-          - 'pypi'
-          - 'testpypi'
+          - pypi
+          - testpypi
 
 permissions:
   contents: write
   id-token: write
-  pull-requests: read
-  issues: read
-
 
 jobs:
+  tests:
+    uses: ./.github/workflows/pytest-actions.yaml
+
   release:
+    needs: tests
     runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.target }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Install Python 3.10
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
         with:
-          python-version: '3.10'
+          fetch-depth: 0
 
-      - name: Install Poetry
-        uses: Gr1N/setup-poetry@v8
+      - uses: actions/setup-python@v5
         with:
-          poetry-version: '1.8.3'
+          python-version: "3.12"
 
-      - name: Install dependencies
-        run: poetry install
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
 
       - name: Bump version
-        id: bump_version
+        id: version
         run: |
-          poetry run python handle_versioning.py ${{ github.event.inputs.version }}
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor }}@users.noreply.github.com"
-          git add pyproject.toml
-          new_version=$(poetry run python handle_versioning.py read)
-          git commit -m "Bump version to $new_version"
-          git push
-          echo "latest_version=$new_version" >> $GITHUB_ENV
+          current=$(python -c "
+          import re, pathlib
+          text = pathlib.Path('osipy/_version.py').read_text()
+          print(re.search(r'__version__\s*=\s*\"(.+?)\"', text).group(1))
+          ")
+          IFS='.' read -r major minor patch <<< "$current"
+          case "${{ inputs.bump }}" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+          esac
+          new_version="${major}.${minor}.${patch}"
+          sed -i "s/__version__ = \".*\"/__version__ = \"${new_version}\"/" osipy/_version.py
+          echo "version=${new_version}" >> "$GITHUB_OUTPUT"
 
-      - name: Generate release notes
-        id: release-notes
-        uses: release-drafter/release-drafter@v6
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add osipy/_version.py
+          git commit -m "release: v${{ steps.version.outputs.version }}"
+          git push
 
       - name: Create tag
-        id: create_tags
         run: |
-          current_version=${{env.latest_version}}
-          git tag $current_version
-          git push origin $current_version
-
-      - name: Create release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-            tag_name: ${{env.latest_version}}
-            release_name: Release ${{env.latest_version}}
-            body: ${{ steps.release-notes.outputs.release_notes }}
-            draft: false
-            prerelease: false
+          git tag "v${{ steps.version.outputs.version }}"
+          git push origin "v${{ steps.version.outputs.version }}"
 
       - name: Build package
-        run: |
-          poetry build
+        run: uv build
 
-      - name: Publish to TestPyPI or PyPI
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ steps.version.outputs.version }}"
+          name: "v${{ steps.version.outputs.version }}"
+          generate_release_notes: true
+          files: dist/*
+
+      - name: Publish to PyPI
+        if: inputs.target == 'pypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Publish to TestPyPI
+        if: inputs.target == 'testpypi'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          repository-url: ${{ github.event.inputs.repository == 'pypi' && 'https://upload.pypi.org/legacy/' || 'https://test.pypi.org/legacy/' }}
-          username: __token__
-          password: ${{ github.event.inputs.repository == 'pypi' && secrets.PYPI_API_TOKEN || secrets.TEST_PYPI_API_TOKEN }}
-        env:
-          POETRY_PYPI_TOKEN: ${{ github.event.inputs.repository == 'pypi' && secrets.PYPI_POETRY_TOKEN || secrets.TEST_PYPI_POETRY_TOKEN }}
+          repository-url: https://test.pypi.org/legacy/
