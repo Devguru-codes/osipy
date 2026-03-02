@@ -87,25 +87,19 @@ jobs:
             --head "$branch"
 
   # ── Stage 2: triggered by push to main (PR merge) ──
-  publish:
+  detect-target:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    environment:
-      name: ${{ steps.target.outputs.target }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      target: ${{ steps.target.outputs.target }}
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
 
       - name: Get version
         id: version
         run: |
-          version=$(python -c "
+          version=$(python3 -c "
           import re, pathlib
           text = pathlib.Path('osipy/_version.py').read_text()
           print(re.search(r'__version__\s*=\s*\"(.+?)\"', text).group(1))
@@ -126,10 +120,25 @@ jobs:
             echo "target=testpypi" >> "$GITHUB_OUTPUT"
           fi
 
+  publish:
+    needs: detect-target
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ needs.detect-target.outputs.target }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
       - name: Create tag
         run: |
-          git tag "v${{ steps.version.outputs.version }}"
-          git push origin "v${{ steps.version.outputs.version }}"
+          git tag "v${{ needs.detect-target.outputs.version }}"
+          git push origin "v${{ needs.detect-target.outputs.version }}"
 
       - name: Build package
         run: uv build
@@ -137,17 +146,17 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v${{ steps.version.outputs.version }}"
-          name: "v${{ steps.version.outputs.version }}"
+          tag_name: "v${{ needs.detect-target.outputs.version }}"
+          name: "v${{ needs.detect-target.outputs.version }}"
           generate_release_notes: true
           files: dist/*
 
       - name: Publish to PyPI
-        if: steps.target.outputs.target == 'pypi'
+        if: needs.detect-target.outputs.target == 'pypi'
         uses: pypa/gh-action-pypi-publish@release/v1
 
       - name: Publish to TestPyPI
-        if: steps.target.outputs.target == 'testpypi'
+        if: needs.detect-target.outputs.target == 'testpypi'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
