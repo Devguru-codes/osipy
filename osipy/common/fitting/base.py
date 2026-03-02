@@ -138,7 +138,12 @@ class BaseFitter(ABC):
 
         # Determine device
         use_gpu = is_gpu_available() and not get_backend().force_cpu
-        logger.info("Fitting %d voxels using %s", n_voxels, "GPU" if use_gpu else "CPU")
+        logger.info(
+            "Fitting %d voxels using %s (%s)",
+            n_voxels,
+            "GPU" if use_gpu else "CPU",
+            self.fitting_method_name,
+        )
 
         # Extract masked voxel data: (nt, n_voxels)
         observed_masked = data[mask].T

@@ -51,21 +51,25 @@ class BayesianFitter(BaseFitter):
         If True, add ``{param}_std`` ParameterMap objects to the
         ``fit_image()`` result via Laplace approximation at the MAP
         estimate.
+    tolerance : float
+        Convergence tolerance for relative cost change.
     """
 
     fitting_method_name = "bayesian"
 
     def __init__(
         self,
-        n_samples: int = 1000,
+        n_samples: int = 100,
         prior_std: "NDArray[np.floating[Any]] | None" = None,
         noise_std: float | None = None,
         chunk_size: int | None = None,
         compute_uncertainty: bool = False,
+        tolerance: float = 1e-6,
     ) -> None:
         from osipy.common.backend.config import get_backend
 
         self.n_samples = n_samples
+        self.tolerance = tolerance
         if prior_std is None:
             prior_std = np.ones(1)
         self.prior_std = np.atleast_1d(np.asarray(prior_std, dtype=np.float64))
@@ -207,16 +211,21 @@ class BayesianFitter(BaseFitter):
         n_params = len(param_names)
         bounds = self._merge_bounds(model.get_bounds(), bounds_override)
 
+        # Pre-compute vectorized bound arrays for single-call clipping
+        lower_bounds = xp.full((n_params, 1), -xp.inf, dtype=observed_batch.dtype)
+        upper_bounds = xp.full((n_params, 1), xp.inf, dtype=observed_batch.dtype)
+        for i, name in enumerate(param_names):
+            if name in bounds:
+                lower_bounds[i, 0] = bounds[name][0]
+                upper_bounds[i, 0] = bounds[name][1]
+
         # Initial guess (also serves as prior mean)
         if initial_params is not None:
             params = xp.asarray(initial_params)
         else:
             params = model.get_initial_guess_batch(observed_batch, xp)
         p0 = params.copy()
-        for i, name in enumerate(param_names):
-            if name in bounds:
-                low, high = bounds[name]
-                params[i, :] = xp.clip(params[i, :], low, high)
+        params = xp.clip(params, lower_bounds, upper_bounds)
 
         # Estimate noise from baseline frames
         n_baseline = min(5, n_obs // 4)
@@ -238,68 +247,114 @@ class BayesianFitter(BaseFitter):
         # Reuse LM infrastructure for Jacobian / solve
         lm = LevenbergMarquardtFitter.__new__(LevenbergMarquardtFitter)
 
-        lambda_lm = 1e-3 * xp.ones(n_voxels, dtype=observed_batch.dtype)
         converged = xp.zeros(n_voxels, dtype=bool)
-        prev_cost = xp.full(n_voxels, xp.inf, dtype=observed_batch.dtype)
 
-        max_iter = 1000
-        tolerance = 1e-8
+        # Vectorized diagonal index for damping
+        diag_idx = xp.arange(n_params)
 
-        for _iteration in range(max_iter):
-            pred = model.predict_array_batch(params, xp)
-            residuals = observed_batch - pred
+        # Working-set arrays — compacted each iteration as voxels converge.
+        # active_idx maps working-set columns back to the full batch.
+        active_idx = xp.arange(n_voxels)
+        act_obs = observed_batch
+        act_params = params.copy()
+        act_p0 = p0.copy()
+        act_lambda = 1e-3 * xp.ones(n_voxels, dtype=observed_batch.dtype)
+        act_prev_cost = xp.full(n_voxels, xp.inf, dtype=observed_batch.dtype)
+
+        for _iteration in range(self.n_samples):
+            # --- Forward pass (active voxels only) ---
+            pred = model.predict_array_batch(act_params, xp)
+            residuals = act_obs - pred
 
             # MAP cost: likelihood + prior (per-parameter weights)
             likelihood_cost = xp.sum(residuals**2, axis=0)
-            prior_cost = xp.sum(prior_weights * (params - p0) ** 2, axis=0)
+            prior_cost = xp.sum(
+                prior_weights * (act_params - act_p0) ** 2, axis=0
+            )
             cost = likelihood_cost + prior_cost
 
-            # Check convergence
-            has_prev = xp.isfinite(prev_cost)
-            safe_prev = xp.where(has_prev, prev_cost, xp.ones_like(cost))
+            # --- Convergence check ---
+            has_prev = xp.isfinite(act_prev_cost)
+            safe_prev = xp.where(has_prev, act_prev_cost, xp.ones_like(cost))
             safe_cost = xp.where(has_prev, cost, xp.zeros_like(cost))
-            cost_change = xp.abs(safe_prev - safe_cost) / (xp.abs(safe_prev) + 1e-10)
-            newly_converged = cost_change < tolerance
-            converged = converged | newly_converged
+            cost_change = xp.abs(safe_prev - safe_cost) / (
+                xp.abs(safe_prev) + 1e-10
+            )
+            newly_converged = cost_change < self.tolerance
 
-            if xp.all(converged):
+            still_active = xp.nonzero(~newly_converged)[0]
+
+            # All converged? Write back and break.
+            if still_active.shape[0] == 0:
+                params[:, active_idx] = act_params
+                converged[active_idx] = True
                 break
 
-            # Jacobian: try analytical first
-            jacobian = model.compute_jacobian_batch(params, pred, xp)
+            # Compact working set if any voxels converged this iteration
+            if still_active.shape[0] < act_params.shape[1]:
+                params[:, active_idx] = act_params
+                converged[active_idx] = converged[active_idx] | newly_converged
+
+                active_idx = active_idx[still_active]
+                act_obs = act_obs[:, still_active]
+                act_params = act_params[:, still_active]
+                act_p0 = act_p0[:, still_active]
+                act_lambda = act_lambda[still_active]
+                act_prev_cost = act_prev_cost[still_active]
+
+                pred = pred[:, still_active]
+                residuals = residuals[:, still_active]
+                cost = cost[still_active]
+
+            # --- Jacobian (active voxels only) ---
+            jacobian = model.compute_jacobian_batch(act_params, pred, xp)
             if jacobian is None:
-                jacobian = lm._compute_jacobian_numerical(model, params, pred, xp)
+                jacobian = lm._compute_jacobian_numerical(
+                    model, act_params, pred, xp
+                )
 
             # J^T @ residuals with prior gradient
             jtr = xp.einsum("ptn,tn->pn", jacobian, residuals)
-            jtr -= prior_weights * (params - p0)
+            jtr -= prior_weights * (act_params - act_p0)
 
-            # J^T @ J with prior Hessian contribution
+            # J^T @ J with prior Hessian contribution + LM damping
             jtj = xp.einsum("ptn,qtn->pqn", jacobian, jacobian)
-            for p in range(n_params):
-                jtj[p, p, :] += prior_weights[p, 0]
-                jtj[p, p, :] += lambda_lm * (jtj[p, p, :] + 1e-10)
+            jtj[diag_idx, diag_idx, :] += prior_weights[:, 0].reshape(
+                n_params, 1
+            )
+            jtj[diag_idx, diag_idx, :] += act_lambda * (
+                jtj[diag_idx, diag_idx, :] + 1e-10
+            )
 
-            delta_params = lm._batch_solve(jtj, jtr, converged, xp)
+            # Solve — all voxels in working set are active
+            no_conv = xp.zeros(act_params.shape[1], dtype=bool)
+            delta_params = lm._batch_solve(jtj, jtr, no_conv, xp)
 
-            new_params = params + delta_params
-            for i, name in enumerate(param_names):
-                if name in bounds:
-                    low, high = bounds[name]
-                    new_params[i, :] = xp.clip(new_params[i, :], low, high)
+            # Vectorized bound clipping
+            new_params = xp.clip(
+                act_params + delta_params, lower_bounds, upper_bounds
+            )
 
+            # Trial-point cost
             pred_new = model.predict_array_batch(new_params, xp)
-            new_likelihood = xp.sum((observed_batch - pred_new) ** 2, axis=0)
-            new_prior = xp.sum(prior_weights * (new_params - p0) ** 2, axis=0)
+            new_likelihood = xp.sum((act_obs - pred_new) ** 2, axis=0)
+            new_prior = xp.sum(
+                prior_weights * (new_params - act_p0) ** 2, axis=0
+            )
             new_cost = new_likelihood + new_prior
 
+            # Accept/reject per voxel
             improved = new_cost < cost
-            params = xp.where(improved, new_params, params)
+            act_params = xp.where(improved, new_params, act_params)
+            act_prev_cost = xp.where(improved, cost, act_prev_cost)
+            act_lambda = xp.where(
+                improved, act_lambda * 0.5, act_lambda * 2.0
+            )
+            act_lambda = xp.clip(act_lambda, 1e-10, 1e10)
 
-            lambda_lm = xp.where(improved, lambda_lm * 0.5, lambda_lm * 2.0)
-            lambda_lm = xp.clip(lambda_lm, 1e-10, 1e10)
-
-            prev_cost = xp.where(improved, cost, prev_cost)
+        # Write back any remaining active (unconverged) voxels
+        if active_idx.shape[0] > 0:
+            params[:, active_idx] = act_params
 
         # Final R-squared (likelihood only, not MAP cost)
         pred_final = model.predict_array_batch(params, xp)
