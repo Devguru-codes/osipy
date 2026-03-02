@@ -32,15 +32,14 @@ permissions:
   id-token: write
 
 jobs:
-  # ── Stage 1: workflow_dispatch → create release PR ──
-  # TODO: re-enable tests before production use
-  # tests:
-  #   if: github.event_name == 'workflow_dispatch'
-  #   uses: ./.github/workflows/pytest-actions.yaml
+  # ── Stage 1: workflow_dispatch → run tests and create release PR ──
+  tests:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/pytest-actions.yaml
 
   prepare-release:
     if: github.event_name == 'workflow_dispatch'
-    # needs: tests
+    needs: tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -114,10 +113,10 @@ jobs:
         id: target
         run: |
           body="${{ github.event.pull_request.body }}"
-          if echo "$body" | grep -q '**pypi**'; then
-            echo "target=pypi" >> "$GITHUB_OUTPUT"
-          else
+          if echo "$body" | grep -qF '**testpypi**'; then
             echo "target=testpypi" >> "$GITHUB_OUTPUT"
+          else
+            echo "target=pypi" >> "$GITHUB_OUTPUT"
           fi
 
   publish:
