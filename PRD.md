@@ -1,7 +1,7 @@
 # osipy — Product Requirements Document
 
-**Version**: 1.0.0
-**Date**: 2026-02-14
+**Version**: 0.0.1
+**Date**: 2026-03-02
 **Status**: Active
 **License**: MIT
 
