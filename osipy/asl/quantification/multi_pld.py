@@ -241,7 +241,7 @@ class BuxtonMultiPLDModel(BaseASLModel):
     ) -> NDArray[np.floating[Any]]:
         """Predict ASL signal at given PLDs using Buxton model.
 
-        Kept for backward compatibility with BaseATTModel interface.
+        Predict ASL signal for the given PLDs.
         """
         xp = get_array_module(pld)
         tau_s = params.label_duration / 1000.0
@@ -263,7 +263,7 @@ class BuxtonMultiPLDModel(BaseASLModel):
         return result
 
 
-# Backward compatibility: ATT registry points to same model
+# Register in ATT registry under short name
 register_att_model("buxton")(BuxtonMultiPLDModel)
 
 

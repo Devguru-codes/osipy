@@ -173,17 +173,3 @@ class TestAIFComponentsAreComponents:
         assert detector.reference
 
 
-class TestBackwardCompatAliases:
-    """Backward compatibility aliases still work."""
-
-    def test_base_quantification_model_alias(self):
-        from osipy.asl.quantification import BaseQuantificationModel
-        from osipy.asl.quantification.base import BaseASLModel
-
-        assert BaseQuantificationModel is BaseASLModel
-
-    def test_base_att_model_alias(self):
-        from osipy.asl.quantification import BaseATTModel
-        from osipy.asl.quantification.base import BaseASLModel
-
-        assert BaseATTModel is BaseASLModel

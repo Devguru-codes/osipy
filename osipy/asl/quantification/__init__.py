@@ -10,7 +10,6 @@ References
 .. [1] OSIPI ASL Lexicon, https://osipi.github.io/ASL-Lexicon/
 """
 
-from osipy.asl.quantification.att_base import BaseATTModel
 from osipy.asl.quantification.att_registry import (
     get_att_model,
     list_att_models,
@@ -38,15 +37,10 @@ from osipy.asl.quantification.registry import (
     register_quantification_model,
 )
 
-# Backward compatibility alias
-BaseQuantificationModel = BaseASLModel
-
 __all__ = [
     "ASLQuantificationParams",
     "ASLQuantificationResult",
     "BaseASLModel",
-    "BaseATTModel",
-    "BaseQuantificationModel",
     "MultiPLDParams",
     "MultiPLDResult",
     "compute_control_label_difference",

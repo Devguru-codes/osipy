@@ -284,7 +284,3 @@ def convolve_aif(
     result = xp.fft.irfft(result_fft, n=n_fft, axis=0)
 
     return result[:n_time] * dt
-
-
-# Backward-compatibility alias
-convolve_aif_batch = convolve_aif

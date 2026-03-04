@@ -557,8 +557,3 @@ def plot_parameter_scatter(
     ax.set_title(title)
 
     return fig
-
-
-# Aliases for backward compatibility
-plot_parameter_grid = plot_parameter_comparison
-plot_map_comparison = plot_parameter_comparison

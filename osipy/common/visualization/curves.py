@@ -471,7 +471,3 @@ def plot_multi_curves(
     ax.grid(True, alpha=0.3)
 
     return ax
-
-
-# Aliases for backward compatibility
-plot_signal_time_course = plot_time_course

@@ -190,9 +190,6 @@ def expconv(
     return result * T_arr[xp.newaxis, :]
 
 
-# Backward-compatibility alias
-expconv_batch = expconv
-
 
 def biexpconv(
     f: NDArray[np.floating],
