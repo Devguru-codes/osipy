@@ -271,9 +271,6 @@ def _biexpconv_limit(
     f = xp.asarray(f)
     t = xp.asarray(t)
 
-    n = len(t)
-    xp.zeros(n, dtype=f.dtype)
-
     # Use numerical differentiation with small delta
     delta = T * 1e-6
     E_plus = expconv(f, T + delta, t)

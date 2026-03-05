@@ -787,10 +787,6 @@ def compute_pcasl_difference(
     return delta_m
 
 
-# Alias for PASL (same computation: control - label)
-compute_pasl_difference = compute_pcasl_difference
-
-
 def compute_cbf_uncertainty(
     delta_m: "NDArray[np.floating[Any]]",
     delta_m_std: "NDArray[np.floating[Any]]",

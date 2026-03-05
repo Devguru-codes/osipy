@@ -63,7 +63,7 @@ class BoundSPGRModel(BaseBoundModel):
         self._cos_fa = xp.asarray(self._cos_fa)
 
     def predict_array_batch(
-        self, free_params_batch: NDArray[np.floating[Any]], xp: Any
+        self, free_params_batch: NDArray[np.floating[Any]], xp: Any,
     ) -> NDArray[np.floating[Any]]:
         """Predict SPGR signal for a batch of voxels.
 
@@ -109,7 +109,7 @@ class BoundSPGRModel(BaseBoundModel):
         return m0_row * sin_fa * one_minus_e1 / denom
 
     def get_initial_guess_batch(
-        self, observed_batch: NDArray[np.floating[Any]], xp: Any
+        self, observed_batch: NDArray[np.floating[Any]], xp: Any,
     ) -> NDArray[np.floating[Any]]:
         """Get initial parameter guesses from data.
 
@@ -255,7 +255,7 @@ class BoundLookLockerModel(BaseBoundModel):
         self._ti_times = xp.asarray(self._ti_times)
 
     def predict_array_batch(
-        self, free_params_batch: NDArray[np.floating[Any]], xp: Any
+        self, free_params_batch: NDArray[np.floating[Any]], xp: Any,
     ) -> NDArray[np.floating[Any]]:
         """Predict Look-Locker signal for a batch of voxels.
 
@@ -292,7 +292,7 @@ class BoundLookLockerModel(BaseBoundModel):
         return a[xp.newaxis, :] - b[xp.newaxis, :] * exp_term
 
     def get_initial_guess_batch(
-        self, observed_batch: NDArray[np.floating[Any]], xp: Any
+        self, observed_batch: NDArray[np.floating[Any]], xp: Any,
     ) -> NDArray[np.floating[Any]]:
         """Get initial parameter guesses from data.
 
