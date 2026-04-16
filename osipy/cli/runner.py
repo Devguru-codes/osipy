@@ -296,8 +296,12 @@ def _load_dicom_volume(series_dir: Path) -> tuple[np.ndarray, Any]:
 
     Returns (volume, first_dcm) where volume has shape
     ``(cols, rows, slices)`` following NIfTI transposed convention.
+    Applies Philips + standard DICOM pixel scaling so quantitative
+    signal analysis uses physical (not raw stored) values.
     """
     import pydicom
+
+    from osipy.common.io.dicom import _apply_pixel_scaling
 
     dcm_files = sorted(series_dir.glob("*.dcm"))
     if not dcm_files:
@@ -316,7 +320,9 @@ def _load_dicom_volume(series_dir: Path) -> tuple[np.ndarray, Any]:
     volume = np.zeros((cols, rows, len(slices)), dtype=np.float32)
 
     for i, (_, dcm) in enumerate(slices):
-        volume[:, :, i] = dcm.pixel_array.astype(np.float32).T
+        volume[:, :, i] = (
+            _apply_pixel_scaling(dcm, dcm.pixel_array).astype(np.float32).T
+        )
 
     return volume, first_dcm
 
@@ -330,9 +336,13 @@ def _load_perfusion_dicom(
     the time vector from AcquisitionTime DICOM tags.
 
     Returns ``(signal_4d, time_seconds, metadata)`` where signal_4d
-    has shape ``(cols, rows, slices, timepoints)``.
+    has shape ``(cols, rows, slices, timepoints)``. Applies Philips +
+    standard DICOM pixel scaling so quantitative signal analysis uses
+    physical (not raw stored) values.
     """
     import pydicom
+
+    from osipy.common.io.dicom import _apply_pixel_scaling
 
     dcm_files = sorted(perfusion_dir.glob("*.dcm"))
     if not dcm_files:
@@ -368,7 +378,9 @@ def _load_perfusion_dicom(
         slices = temporal_data[t_idx]
         slices.sort(key=lambda x: x[0])
         for z_idx, (_, dcm) in enumerate(slices):
-            signal_4d[:, :, z_idx, t_out] = dcm.pixel_array.astype(np.float32).T
+            signal_4d[:, :, z_idx, t_out] = (
+                _apply_pixel_scaling(dcm, dcm.pixel_array).astype(np.float32).T
+            )
 
     # Build time vector from AcquisitionTime
     def _parse_dicom_time(t: str) -> float:
