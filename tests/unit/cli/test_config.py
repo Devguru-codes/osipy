@@ -564,6 +564,100 @@ class TestDumpDefaults:
             # Should not raise - validates pipeline section too
             config.get_modality_config()
 
+    def test_dump_dce_includes_every_model_field(self) -> None:
+        """Every pydantic field on DCEPipelineYAML (and nested) surfaces in the
+        generated template. This guards against future fields silently missing
+        from the template because the generator is introspection-driven.
+        """
+        template = dump_defaults("dce")
+        for field in DCEPipelineYAML.model_fields:
+            assert field in template, f"DCE template missing field '{field}'"
+        for field in DCEFittingConfig.model_fields:
+            assert field in template, f"DCE template missing fitting '{field}'"
+
+    def test_dump_dce_exposes_fit_delay(self) -> None:
+        """fit_delay must be present in the DCE template so users can toggle it."""
+        template = dump_defaults("dce")
+        assert "fit_delay:" in template
+
+    def test_dump_default_bool_values_are_yaml_compatible(self) -> None:
+        """Booleans must be rendered as YAML ``true``/``false``, not Python casing."""
+        template = dump_defaults("dce")
+        assert "save_intermediate: false" in template
+        assert "True" not in template and "False" not in template
+
+
+# ---------------------------------------------------------------------------
+# TestFitDelayWiring
+# ---------------------------------------------------------------------------
+
+
+class TestFitDelayWiring:
+    """fit_delay round-trips from YAML → pydantic → pipeline → fit_model."""
+
+    def test_fit_delay_defaults_false(self) -> None:
+        cfg = DCEFittingConfig()
+        assert cfg.fit_delay is False
+
+    def test_fit_delay_parsed_from_yaml(self, tmp_config) -> None:
+        path = tmp_config("""\
+            modality: dce
+            pipeline:
+              fitting:
+                fit_delay: true
+        """)
+        config = load_config(path)
+        mc = config.get_modality_config()
+        assert mc.fitting.fit_delay is True
+
+    def test_fit_delay_reaches_fit_model_via_pipeline(self, monkeypatch) -> None:
+        """Setting fit_delay on DCEPipelineConfig passes through to fit_model."""
+        import numpy as np
+
+        from osipy.common.aif import ArterialInputFunction
+        from osipy.common.dataset import PerfusionDataset
+        from osipy.common.types import AIFType, Modality
+        from osipy.pipeline import dce_pipeline
+        from osipy.pipeline.dce_pipeline import DCEPipeline, DCEPipelineConfig
+
+        _ = AIFType  # keep import (used below)
+
+        captured: dict[str, object] = {}
+
+        def _fake_fit_model(**kwargs):
+            captured.update(kwargs)
+
+            class _Result:
+                def __init__(self) -> None:
+                    self.parameter_maps: dict = {}
+                    self.quality_mask = np.ones((2, 2, 2), dtype=bool)
+
+            return _Result()
+
+        monkeypatch.setattr(dce_pipeline, "fit_model", _fake_fit_model)
+
+        time = np.linspace(0, 60, 10)
+        data = np.random.rand(2, 2, 2, 10)
+        aif_vals = np.abs(np.random.rand(10))
+        dataset = PerfusionDataset(
+            data=data,
+            affine=np.eye(4),
+            modality=Modality.DCE,
+            time_points=time,
+        )
+
+        cfg = DCEPipelineConfig(fit_delay=True)
+        DCEPipeline(cfg).run(
+            dce_data=dataset,
+            time=time,
+            t1_map=None,
+            aif=ArterialInputFunction(
+                time=time, concentration=aif_vals, aif_type=AIFType.POPULATION
+            ),
+        )
+
+        assert captured.get("fit_delay") is True
+
 
 # ---------------------------------------------------------------------------
 # TestCLIParser

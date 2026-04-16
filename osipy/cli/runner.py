@@ -535,6 +535,7 @@ def _run_dce(config: PipelineConfig, data_path: Path, output_dir: Path) -> None:
         max_iterations=fitting.max_iterations,
         tolerance=fitting.tolerance,
         r2_threshold=fitting.r2_threshold,
+        fit_delay=fitting.fit_delay,
     )
 
     # Construct time vector
@@ -754,6 +755,7 @@ def _run_dce_from_dicom(
         mask=fit_mask,
         fitter=fitting.fitter,
         bounds_override=dicom_bounds_override,
+        fit_delay=fitting.fit_delay,
     )
     elapsed_fit = time.perf_counter() - t_fit
 
