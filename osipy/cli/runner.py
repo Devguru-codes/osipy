@@ -349,21 +349,59 @@ def _load_perfusion_dicom(
         msg = f"No DICOM files in {perfusion_dir}"
         raise FileNotFoundError(msg)
 
-    # Group files by temporal position
+    # Group files by temporal position.
+    # Priority: TemporalPositionIdentifier > AcquisitionNumber > InstanceNumber.
+    # Philips stores a constant AcquisitionNumber for all dynamic frames and
+    # puts the true temporal index in TemporalPositionIdentifier; Siemens/GE
+    # typically use AcquisitionNumber instead. This mirrors the fallback
+    # order used by osipy.common.io.dicom.load_dicom.
     temporal_data: dict[int, list[tuple[float, Any]]] = {}
     acquisition_times: dict[int, str] = {}
+    trigger_times: dict[int, float] = {}
 
+    def _temporal_index(dcm: Any) -> int:
+        if hasattr(dcm, "TemporalPositionIdentifier"):
+            return int(dcm.TemporalPositionIdentifier)
+        if hasattr(dcm, "AcquisitionNumber"):
+            return int(dcm.AcquisitionNumber)
+        return int(getattr(dcm, "InstanceNumber", 0))
+
+    def _is_magnitude(dcm: Any) -> bool:
+        """Filter out phase maps from dual-output Philips exports.
+
+        ImageType containing 'P' / 'PHASE MAP' / 'PHASE' marks a phase image,
+        which is not meaningful for quantitative DCE. When ImageType is
+        absent (older or GE/Siemens exports), assume magnitude.
+        """
+        it = tuple(str(x).upper() for x in getattr(dcm, "ImageType", ()) or ())
+        if not it:
+            return True
+        return not any(tag in it for tag in ("PHASE MAP", "P", "PHASE"))
+
+    skipped_non_magnitude = 0
     for f in dcm_files:
         dcm = pydicom.dcmread(f)
-        t_idx = int(dcm.AcquisitionNumber)
+        if not _is_magnitude(dcm):
+            skipped_non_magnitude += 1
+            continue
+        t_idx = _temporal_index(dcm)
         loc = float(getattr(dcm, "SliceLocation", 0))
 
         if t_idx not in temporal_data:
             temporal_data[t_idx] = []
             if hasattr(dcm, "AcquisitionTime"):
                 acquisition_times[t_idx] = str(dcm.AcquisitionTime)
+            if hasattr(dcm, "TriggerTime"):
+                trigger_times[t_idx] = float(dcm.TriggerTime)
 
         temporal_data[t_idx].append((loc, dcm))
+
+    if skipped_non_magnitude:
+        logger.info(
+            "Skipped %d non-magnitude (phase) DICOM frames in %s",
+            skipped_non_magnitude,
+            perfusion_dir.name,
+        )
 
     min_t = min(temporal_data)
     first_dcm = temporal_data[min_t][0][1]
@@ -382,12 +420,18 @@ def _load_perfusion_dicom(
                 _apply_pixel_scaling(dcm, dcm.pixel_array).astype(np.float32).T
             )
 
-    # Build time vector from AcquisitionTime
+    # Build time vector.
+    # Priority: TriggerTime (ms, per-frame dynamic timing — what Philips uses)
+    # > AcquisitionTime (wall clock) > synthetic TR * n_slices fallback.
     def _parse_dicom_time(t: str) -> float:
         h, m, s = int(t[:2]), int(t[2:4]), float(t[4:])
         return h * 3600 + m * 60 + s
 
-    if acquisition_times:
+    if trigger_times and len(trigger_times) == n_timepoints:
+        trig = [trigger_times[t] for t in sorted_t]
+        time_seconds = np.array([(t - trig[0]) / 1000.0 for t in trig])
+        temporal_resolution = float(np.mean(np.diff(time_seconds)))
+    elif acquisition_times:
         times_sec = [_parse_dicom_time(acquisition_times[t]) for t in sorted_t]
         time_seconds = np.array([t - times_sec[0] for t in times_sec])
         temporal_resolution = float(np.mean(np.diff(time_seconds)))
