@@ -242,7 +242,7 @@ class Dcm2niixConverter:
 
             sidecar: dict[str, Any] = {}
             if sidecar_path.exists():
-                with sidecar_path.open() as f:
+                with sidecar_path.open(encoding="utf-8") as f:
                     sidecar = json.load(f)
             else:
                 logger.warning(f"No sidecar JSON generated: {sidecar_path}")

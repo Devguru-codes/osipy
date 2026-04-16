@@ -1014,6 +1014,6 @@ def _save_metadata(
     if elapsed_seconds is not None:
         metadata["elapsed_seconds"] = round(elapsed_seconds, 2)
     meta_path = output_dir / "osipy_run.json"
-    with meta_path.open("w") as f:
+    with meta_path.open("w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2, default=str)
     logger.info("  Saved metadata -> %s", meta_path)

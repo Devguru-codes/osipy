@@ -316,7 +316,7 @@ def _load_nifti(
     if sidecar_json:
         sidecar_path = Path(sidecar_json)
         if sidecar_path.exists():
-            with sidecar_path.open() as f:
+            with sidecar_path.open(encoding="utf-8") as f:
                 sidecar = json.load(f)
     else:
         # Try to find automatic sidecar
@@ -324,7 +324,7 @@ def _load_nifti(
         if path.name.endswith(".nii.gz"):
             auto_sidecar = Path(str(path)[:-7] + ".json")
         if auto_sidecar.exists():
-            with auto_sidecar.open() as f:
+            with auto_sidecar.open(encoding="utf-8") as f:
                 sidecar = json.load(f)
             logger.info(f"Found sidecar: {auto_sidecar}")
 

@@ -588,6 +588,36 @@ class TestDumpDefaults:
 
 
 # ---------------------------------------------------------------------------
+# TestConfigEncoding (Windows / UTF-16 regression guard)
+# ---------------------------------------------------------------------------
+
+
+class TestConfigEncoding:
+    """Guards against the Windows UTF-16 BOM bug that broke YAML parsing."""
+
+    def test_load_config_rejects_utf16_with_helpful_message(
+        self, tmp_path: Path
+    ) -> None:
+        """A UTF-16-encoded config (older Windows-generated file) raises
+        a clear error — we do not silently parse it or crash deep in yaml."""
+        content = "modality: dce\npipeline: {}\n"
+        bad_path = tmp_path / "config_utf16.yaml"
+        bad_path.write_bytes(content.encode("utf-16"))
+
+        with pytest.raises(ValueError, match="not valid UTF-8"):
+            load_config(bad_path)
+
+    def test_load_config_accepts_utf8_without_bom(self, tmp_path: Path) -> None:
+        """Plain UTF-8 (the standard) loads successfully."""
+        content = "modality: dce\npipeline: {}\n"
+        good_path = tmp_path / "config_utf8.yaml"
+        good_path.write_bytes(content.encode("utf-8"))
+
+        cfg = load_config(good_path)
+        assert cfg.modality == "dce"
+
+
+# ---------------------------------------------------------------------------
 # TestFitDelayWiring
 # ---------------------------------------------------------------------------
 
