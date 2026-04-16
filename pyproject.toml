@@ -42,6 +42,7 @@ dependencies = [
     "pydantic>=2.5.0",
     "pyyaml>=6.0",
     "idc-index>=0.11.7",
+    "dcm2niix>=1.0.20250506",
     # interactive
     "plotly>=5.18.0",
     # dev / testing / linting
