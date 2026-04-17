@@ -316,7 +316,7 @@ def _load_nifti(
     if sidecar_json:
         sidecar_path = Path(sidecar_json)
         if sidecar_path.exists():
-            with sidecar_path.open() as f:
+            with sidecar_path.open(encoding="utf-8") as f:
                 sidecar = json.load(f)
     else:
         # Try to find automatic sidecar
@@ -324,7 +324,7 @@ def _load_nifti(
         if path.name.endswith(".nii.gz"):
             auto_sidecar = Path(str(path)[:-7] + ".json")
         if auto_sidecar.exists():
-            with auto_sidecar.open() as f:
+            with auto_sidecar.open(encoding="utf-8") as f:
                 sidecar = json.load(f)
             logger.info(f"Found sidecar: {auto_sidecar}")
 
@@ -392,26 +392,31 @@ def _load_dicom(
     from osipy.common.io.metadata.mapper import MetadataMapper
     from osipy.common.io.vendors.detection import extract_vendor_metadata
 
-    # Try dcm2niix conversion first if requested
+    # Try dcm2niix conversion first if requested. The PyPI `dcm2niix` wheel
+    # ships a bundled binary (see osipy.common.io.converters.dcm2niix) so
+    # this path is available on every standard install. We only fall
+    # through to the pydicom-based loader if the conversion itself fails.
     if use_dcm2niix:
         try:
-            from osipy.common.io.converters.dcm2niix import Dcm2niixConverter
+            from osipy.common.io.converters.dcm2niix import (
+                Dcm2niixConverter,
+                Dcm2niixError,
+            )
 
             converter = Dcm2niixConverter()
-            if converter.is_available():
-                logger.info("Using dcm2niix for DICOM conversion")
-                nifti_path, _sidecar = converter.convert(path)
+            logger.info("Using dcm2niix for DICOM conversion")
+            nifti_path, _sidecar = converter.convert(path)
 
-                # Load the converted NIfTI
-                return _load_nifti(
-                    nifti_path,
-                    modality,
-                    interactive=interactive,
-                    sidecar_json=None,  # sidecar already loaded
-                    **kwargs,
-                )
-        except (ImportError, Exception) as e:
-            logger.debug(f"dcm2niix not available: {e}")
+            # Load the converted NIfTI
+            return _load_nifti(
+                nifti_path,
+                modality,
+                interactive=interactive,
+                sidecar_json=None,  # sidecar already loaded
+                **kwargs,
+            )
+        except (ImportError, Dcm2niixError) as e:
+            logger.debug("dcm2niix unavailable or conversion failed: %s", e)
 
     # Fall back to direct DICOM loading
     try:

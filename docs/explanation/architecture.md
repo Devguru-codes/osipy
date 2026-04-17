@@ -600,8 +600,8 @@ tests/
 | numpy | Array operations | Yes |
 | nibabel | NIfTI I/O | Yes |
 | pydicom | DICOM I/O | Yes |
-| pybids | BIDS support | Yes |
 | matplotlib | Visualization | Yes |
+| dcm2niix | DICOM→NIfTI conversion (bundled binary) | Yes |
 
 ### Optional Dependencies
 

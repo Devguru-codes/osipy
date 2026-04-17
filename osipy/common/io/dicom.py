@@ -33,6 +33,121 @@ logger = logging.getLogger(__name__)
 _NON_IMAGE_MODALITIES = frozenset({"KO", "SR", "PR", "AU", "DOC", "PLAN", "REG"})
 
 
+def _read_private_tag(dcm: Any, group: int, element: int) -> Any:
+    """Safely read a private DICOM tag value, or return None.
+
+    Parameters
+    ----------
+    dcm : pydicom.Dataset
+        DICOM dataset.
+    group : int
+        Private tag group (e.g., 0x2005).
+    element : int
+        Private tag element (e.g., 0x100E).
+
+    Returns
+    -------
+    Any
+        The tag's ``.value`` attribute, or None if the tag is missing.
+    """
+    tag = (group, element)
+    if tag in dcm:
+        elem = dcm[tag]
+        return elem.value
+    return None
+
+
+def _apply_pixel_scaling(dcm: Any, pixel_array: Any) -> np.ndarray:
+    """Rescale DICOM stored pixel values to physical values.
+
+    Applied rules, in priority order:
+
+    1. **Philips private quantitative rescale** — when the scanner is Philips
+       and the private tags ``(2005,100E)`` ScaleSlope and ``(2005,100D)``
+       ScaleIntercept are present, return
+       ``FP = (stored - ScaleIntercept) / ScaleSlope``.
+       Per the Philips DICOM conformance statement, this produces the
+       quantitative floating-point value intended for analysis (the standard
+       RescaleSlope/Intercept are intended for display on Philips and are
+       superseded here).
+    2. **Standard DICOM rescale** — otherwise (or if the Philips private
+       tags are missing / invalid), apply
+       ``value = stored * RescaleSlope + RescaleIntercept``.
+    3. **No-op** — if neither set of tags is applicable, return the array
+       cast to float64.
+
+    Never raises: malformed tags fall back to the next rule with a warning.
+
+    Parameters
+    ----------
+    dcm : pydicom.Dataset
+        Source DICOM dataset (used to look up rescale tags).
+    pixel_array : array-like
+        Stored pixel array from ``dcm.pixel_array``.
+
+    Returns
+    -------
+    np.ndarray
+        Rescaled float64 array with the same shape as ``pixel_array``.
+    """
+    data = np.asarray(pixel_array, dtype=np.float64)
+
+    manufacturer = str(getattr(dcm, "Manufacturer", "")).upper()
+    if "PHILIPS" in manufacturer:
+        scale_slope_raw = _read_private_tag(dcm, 0x2005, 0x100E)
+        scale_intercept_raw = _read_private_tag(dcm, 0x2005, 0x100D)
+        if scale_slope_raw is not None:
+            try:
+                scale_slope = float(scale_slope_raw)
+                scale_intercept = (
+                    float(scale_intercept_raw)
+                    if scale_intercept_raw is not None
+                    else 0.0
+                )
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Philips private scale tags present but non-numeric "
+                    "(slope=%r, intercept=%r); falling back to standard rescale.",
+                    scale_slope_raw,
+                    scale_intercept_raw,
+                )
+            else:
+                if scale_slope == 0.0:
+                    logger.warning(
+                        "Philips ScaleSlope (2005,100E) is zero; "
+                        "skipping quantitative rescale."
+                    )
+                else:
+                    logger.debug(
+                        "Applied Philips quantitative rescale: slope=%s, intercept=%s",
+                        scale_slope,
+                        scale_intercept,
+                    )
+                    return (data - scale_intercept) / scale_slope
+
+    # Standard DICOM rescale fallback
+    rescale_slope_raw = getattr(dcm, "RescaleSlope", None)
+    rescale_intercept_raw = getattr(dcm, "RescaleIntercept", None)
+    try:
+        slope = float(rescale_slope_raw) if rescale_slope_raw is not None else 1.0
+        intercept = (
+            float(rescale_intercept_raw) if rescale_intercept_raw is not None else 0.0
+        )
+    except (TypeError, ValueError):
+        logger.warning(
+            "DICOM RescaleSlope/Intercept non-numeric (slope=%r, intercept=%r); "
+            "returning unscaled pixel values.",
+            rescale_slope_raw,
+            rescale_intercept_raw,
+        )
+        return data
+
+    if slope != 1.0 or intercept != 0.0:
+        data = data * slope + intercept
+
+    return data
+
+
 def build_affine_from_dicom(
     dcm: Any,
     slice_thickness: float,
@@ -333,7 +448,7 @@ def load_dicom(
                 "temporal_pos": temporal_pos,
                 "trigger_time": trigger_time,
                 "content_time": content_time,
-                "pixel_array": dcm.pixel_array.astype(np.float64),
+                "pixel_array": _apply_pixel_scaling(dcm, dcm.pixel_array),
             }
         )
 
@@ -766,7 +881,7 @@ def load_dicom_multi_series(
                     {
                         "file": dcm_file,
                         "slice_loc": slice_loc,
-                        "pixel_array": dcm.pixel_array.astype(np.float64),
+                        "pixel_array": _apply_pixel_scaling(dcm, dcm.pixel_array),
                     }
                 )
                 if first_dcm is None:

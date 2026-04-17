@@ -232,3 +232,217 @@ class TestLoadDicomMultiSeries:
                 interactive=False,
                 use_dcm2niix=False,
             )
+
+
+# ---------------------------------------------------------------------------
+# _discover_dce_dicom_flat — flat-directory (PACS/vendor-export) layouts
+# ---------------------------------------------------------------------------
+
+
+def _make_synthetic_dicom(
+    path: Path,
+    *,
+    series_uid: str,
+    series_description: str,
+    flip_angle: float,
+    repetition_time: float,
+    temporal_position: int | None,
+    slice_location: float,
+) -> None:
+    """Write a minimal valid DICOM to *path* for discovery tests.
+
+    Only the tags the flat discovery reads are populated; pixel data is
+    a 1×1 uint16 zero (not used during header scans). ``series_uid``
+    should be a valid DICOM UID (dot-separated digits only).
+    """
+    import warnings
+
+    import numpy as np
+    import pydicom
+    from pydicom.dataset import Dataset, FileDataset
+    from pydicom.uid import ExplicitVRLittleEndian, generate_uid
+
+    file_meta = Dataset()
+    file_meta.MediaStorageSOPClassUID = pydicom.uid.MRImageStorage
+    file_meta.MediaStorageSOPInstanceUID = generate_uid()
+    file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+
+    ds = FileDataset(str(path), {}, file_meta=file_meta, preamble=b"\0" * 128)
+
+    ds.SeriesInstanceUID = series_uid
+    ds.SOPInstanceUID = file_meta.MediaStorageSOPInstanceUID
+    ds.SeriesDescription = series_description
+    ds.FlipAngle = flip_angle
+    ds.RepetitionTime = repetition_time
+    ds.EchoTime = 4.0
+    ds.SliceLocation = slice_location
+    if temporal_position is not None:
+        ds.TemporalPositionIdentifier = temporal_position
+    ds.Rows = 1
+    ds.Columns = 1
+    ds.BitsAllocated = 16
+    ds.BitsStored = 16
+    ds.HighBit = 15
+    ds.PixelRepresentation = 0
+    ds.SamplesPerPixel = 1
+    ds.PhotometricInterpretation = "MONOCHROME2"
+    ds.PixelData = np.zeros((1, 1), dtype=np.uint16).tobytes()
+
+    # Silence the noisy pydicom deprecation warnings that pytest promotes
+    # to errors under this project's warning-filter configuration.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        ds.save_as(str(path), write_like_original=False)
+
+
+class TestDiscoverDceDicomFlat:
+    """Flat-directory DCE discovery groups by SeriesInstanceUID and
+    classifies dynamic vs VFA from headers alone — no subdirectory
+    naming convention required."""
+
+    def test_classifies_dynamic_by_temporal_position_identifier(
+        self, tmp_path: Path
+    ) -> None:
+        from osipy.cli.runner import _discover_dce_dicom_flat
+
+        # Three VFA series (2 slices each, no TPI) — different flip angles
+        # but same TR.
+        for fa in (5.0, 10.0, 20.0):
+            uid = f"1.2.3.100{int(fa)}"
+            for i, loc in enumerate((0.0, 5.0)):
+                _make_synthetic_dicom(
+                    tmp_path / f"vfa_{int(fa)}_{i}.dcm",
+                    series_uid=uid,
+                    series_description=f"FA{int(fa)}",
+                    flip_angle=fa,
+                    repetition_time=20.0,
+                    temporal_position=None,
+                    slice_location=loc,
+                )
+
+        # Dynamic series: 2 slices × 3 TPIs = 6 files
+        dyn_uid = "1.2.3.999"
+        for tpi in (1, 2, 3):
+            for i, loc in enumerate((0.0, 5.0)):
+                _make_synthetic_dicom(
+                    tmp_path / f"dyn_{tpi}_{i}.dcm",
+                    series_uid=dyn_uid,
+                    series_description="DCE",
+                    flip_angle=30.0,
+                    repetition_time=6.0,
+                    temporal_position=tpi,
+                    slice_location=loc,
+                )
+
+        result = _discover_dce_dicom_flat(tmp_path)
+
+        assert result is not None
+        vfa_lists, perfusion_files = result
+        # VFA sorted ascending by flip angle
+        assert len(vfa_lists) == 3
+        assert [len(v) for v in vfa_lists] == [2, 2, 2]
+        # Dynamic carries 6 files, identified via TemporalPositionIdentifier
+        assert len(perfusion_files) == 6
+
+    def test_returns_none_for_single_series(self, tmp_path: Path) -> None:
+        from osipy.cli.runner import _discover_dce_dicom_flat
+
+        for i in range(3):
+            _make_synthetic_dicom(
+                tmp_path / f"f{i}.dcm",
+                series_uid="1.2.3.500",
+                series_description="FA10",
+                flip_angle=10.0,
+                repetition_time=20.0,
+                temporal_position=None,
+                slice_location=float(i),
+            )
+
+        assert _discover_dce_dicom_flat(tmp_path) is None
+
+    def test_returns_none_when_no_vfa_candidates(self, tmp_path: Path) -> None:
+        """Only a dynamic series + one other series without FlipAngle —
+        nothing qualifies as VFA, so discovery returns None."""
+        from osipy.cli.runner import _discover_dce_dicom_flat
+
+        # Dynamic
+        for tpi in (1, 2):
+            _make_synthetic_dicom(
+                tmp_path / f"dyn_{tpi}.dcm",
+                series_uid="1.2.3.888",
+                series_description="DCE",
+                flip_angle=30.0,
+                repetition_time=6.0,
+                temporal_position=tpi,
+                slice_location=0.0,
+            )
+        # A second series also with multiple TPIs → classifier will pick
+        # one as dynamic; the other has no FA-only distinguishing.
+        # We deliberately omit FlipAngle on this second one.
+        import numpy as np
+        import pydicom
+        from pydicom.dataset import Dataset, FileDataset
+        from pydicom.uid import ExplicitVRLittleEndian, generate_uid
+
+        file_meta = Dataset()
+        file_meta.MediaStorageSOPClassUID = pydicom.uid.MRImageStorage
+        file_meta.MediaStorageSOPInstanceUID = generate_uid()
+        file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+        ds = FileDataset(
+            str(tmp_path / "other.dcm"),
+            {},
+            file_meta=file_meta,
+            preamble=b"\0" * 128,
+        )
+        ds.SeriesInstanceUID = "1.2.3.777"
+        ds.SOPInstanceUID = file_meta.MediaStorageSOPInstanceUID
+        ds.Rows = 1
+        ds.Columns = 1
+        ds.BitsAllocated = 16
+        ds.BitsStored = 16
+        ds.HighBit = 15
+        ds.PixelRepresentation = 0
+        ds.SamplesPerPixel = 1
+        ds.PhotometricInterpretation = "MONOCHROME2"
+        ds.PixelData = np.zeros((1, 1), dtype=np.uint16).tobytes()
+        import warnings as _warnings
+
+        with _warnings.catch_warnings():
+            _warnings.simplefilter("ignore")
+            ds.save_as(str(tmp_path / "other.dcm"), write_like_original=False)
+
+        assert _discover_dce_dicom_flat(tmp_path) is None
+
+    def test_nested_discovery_falls_through_to_flat(self, tmp_path: Path) -> None:
+        """The public _discover_dce_dicom_series delegates to flat
+        discovery when no TCIA-style subdirs match."""
+        from osipy.cli.runner import _discover_dce_dicom_series
+
+        # Build the same flat layout as the classifier test
+        for fa in (5.0, 10.0):
+            uid = f"1.2.3.100{int(fa)}"
+            _make_synthetic_dicom(
+                tmp_path / f"vfa_{int(fa)}.dcm",
+                series_uid=uid,
+                series_description=f"FA{int(fa)}",
+                flip_angle=fa,
+                repetition_time=20.0,
+                temporal_position=None,
+                slice_location=0.0,
+            )
+        for tpi in (1, 2):
+            _make_synthetic_dicom(
+                tmp_path / f"dyn_{tpi}.dcm",
+                series_uid="1.2.3.666",
+                series_description="DCE",
+                flip_angle=30.0,
+                repetition_time=6.0,
+                temporal_position=tpi,
+                slice_location=0.0,
+            )
+
+        result = _discover_dce_dicom_series(tmp_path)
+        assert result is not None
+        vfa_lists, perfusion_files = result
+        assert len(vfa_lists) == 2
+        assert len(perfusion_files) == 2

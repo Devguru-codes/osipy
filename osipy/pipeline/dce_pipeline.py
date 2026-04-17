@@ -81,6 +81,9 @@ class DCEPipelineConfig:
         Convergence tolerance for fitting.
     r2_threshold : float | None
         R-squared threshold for valid fitting results.
+    fit_delay : bool
+        If True, jointly fit an arterial delay parameter with the DCE model
+        (adds one parameter per voxel). Defaults to False.
     """
 
     t1_mapping_method: str = "vfa"
@@ -98,6 +101,7 @@ class DCEPipelineConfig:
     max_iterations: int | None = None
     tolerance: float | None = None
     r2_threshold: float | None = None
+    fit_delay: bool = False
 
 
 @dataclass
@@ -247,9 +251,10 @@ class DCEPipeline:
             mask=mask,
             fitter=self.config.fitter,
             bounds_override=self.config.bounds_override,
-            progress_callback=lambda p: progress_callback("Model Fitting", p)
-            if progress_callback
-            else None,
+            fit_delay=self.config.fit_delay,
+            progress_callback=lambda p: (
+                progress_callback("Model Fitting", p) if progress_callback else None
+            ),
         )
 
         if progress_callback:
