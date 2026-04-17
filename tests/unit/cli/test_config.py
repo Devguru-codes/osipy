@@ -586,6 +586,13 @@ class TestDumpDefaults:
         assert "save_intermediate: false" in template
         assert "True" not in template and "False" not in template
 
+    def test_dce_template_has_no_roi_block(self) -> None:
+        """The ROI feature was removed in favor of `data.mask:` — guard
+        against a regression that would reintroduce the redundant knob."""
+        template = dump_defaults("dce")
+        assert "roi:" not in template
+        assert "ROIConfig" not in template
+
 
 # ---------------------------------------------------------------------------
 # TestConfigEncoding (Windows / UTF-16 regression guard)

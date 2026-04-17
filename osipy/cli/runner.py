@@ -456,53 +456,6 @@ def _load_perfusion_dicom(
     return signal_4d, time_seconds, metadata
 
 
-def _build_roi_mask(
-    spatial_shape: tuple[int, ...],
-    roi_cfg: Any,
-) -> NDArray[np.bool_] | None:
-    """Build a spherical ROI mask from pipeline ROI configuration.
-
-    Parameters
-    ----------
-    spatial_shape : tuple
-        (x, y, z) shape of the volume.
-    roi_cfg : ROIConfig
-        ROI configuration from YAML (has .enabled, .center, .radius).
-
-    Returns
-    -------
-    NDArray[np.bool_] | None
-        Boolean mask or None if ROI is disabled.
-    """
-    if not roi_cfg.enabled:
-        return None
-
-    radius = roi_cfg.radius
-    if roi_cfg.center is not None:
-        cx, cy, cz = roi_cfg.center
-    else:
-        # Default to volume center
-        cx = spatial_shape[0] // 2
-        cy = spatial_shape[1] // 2
-        cz = spatial_shape[2] // 2
-
-    logger.info("Using ROI: center=(%d, %d, %d), radius=%d", cx, cy, cz, radius)
-
-    # Build coordinate grids within the bounding box
-    x0 = max(cx - radius, 0)
-    x1 = min(cx + radius + 1, spatial_shape[0])
-    y0 = max(cy - radius, 0)
-    y1 = min(cy + radius + 1, spatial_shape[1])
-    z0 = max(cz - radius, 0)
-    z1 = min(cz + radius + 1, spatial_shape[2])
-
-    mask = np.zeros(spatial_shape, dtype=bool)
-    zz, yy, xx = np.ogrid[z0:z1, y0:y1, x0:x1]
-    dist_sq = (xx - cx) ** 2 + (yy - cy) ** 2 + (zz - cz) ** 2
-    mask[x0:x1, y0:y1, z0:z1] = dist_sq.transpose(2, 1, 0) <= radius**2
-    return mask
-
-
 def _run_dce(config: PipelineConfig, data_path: Path, output_dir: Path) -> None:
     from osipy.common.types import DCEAcquisitionParams
     from osipy.pipeline.dce_pipeline import DCEPipeline, DCEPipelineConfig
@@ -600,14 +553,6 @@ def _run_dce(config: PipelineConfig, data_path: Path, output_dir: Path) -> None:
         tr_sec = (acq.tr / 1000.0) if acq.tr is not None else 1.0
         time_array = np.arange(dataset.data.shape[-1]) * tr_sec
 
-    # ROI mask
-    roi_mask = _build_roi_mask(
-        dataset.data.shape[:3],
-        mc.roi,  # type: ignore[attr-defined]
-    )
-    if roi_mask is not None:
-        mask = roi_mask if mask is None else (mask & roi_mask)
-
     # Run
     pipeline = DCEPipeline(pipeline_cfg)
     t_fit = time.perf_counter()
@@ -694,14 +639,8 @@ def _run_dce_from_dicom(
     # ---- Transfer perfusion signal to GPU for pipeline compute ----
     signal_4d = to_gpu(signal_4d)
 
-    # ---- ROI mask ----
-    roi_mask = _build_roi_mask(
-        spatial_shape,
-        mc.roi,  # type: ignore[attr-defined]
-    )
+    # ---- Load user-supplied mask (if any) ----
     mask = _load_mask(config.data.mask, data_path.parent)
-    if roi_mask is not None:
-        mask = roi_mask if mask is None else (mask & roi_mask)
 
     # ---- Step 3: Compute T1 map ----
     logger.info("[Step 3] Computing T1 map (VFA)...")

@@ -254,21 +254,6 @@ class DCEAcquisitionYAML(BaseModel):
     )
 
 
-class ROIConfig(BaseModel):
-    """Region-of-interest configuration for limiting processing."""
-
-    enabled: bool = Field(
-        default=False,
-        description="set true to process only an ROI for faster iteration",
-    )
-    center: list[int] | None = Field(
-        default=None,
-        description="voxel center [x, y, z] (default: volume center)",
-        examples=[[128, 128, 8]],
-    )
-    radius: int = Field(default=10, description="radius in voxels")
-
-
 class DCEPipelineYAML(BaseModel):
     """DCE pipeline settings from YAML."""
 
@@ -286,7 +271,6 @@ class DCEPipelineYAML(BaseModel):
     )
     save_intermediate: bool = Field(default=False)
     acquisition: DCEAcquisitionYAML = DCEAcquisitionYAML()
-    roi: ROIConfig = ROIConfig()
     fitting: DCEFittingConfig = DCEFittingConfig()
 
     @field_validator("model")
