@@ -223,29 +223,36 @@ def _log_parameter_stats(
 
 def _discover_dce_dicom_series(
     data_path: Path,
-) -> tuple[list[Path], Path] | None:
-    """Discover VFA and perfusion series in a DCE DICOM directory tree.
+) -> tuple[list[list[Path]], list[Path]] | None:
+    r"""Discover VFA and perfusion series in a DCE DICOM directory tree.
 
-    Handles multi-level layouts like:
-    ``visit_dir / study_dir / series_dir / *.dcm``
+    Tries two layouts, in order:
+
+    1. **Nested TCIA-style layout** (``visit_dir / study_dir / series_dir / *.dcm``
+       with series-directory names matching ``ax \d+ flip`` and
+       ``...perfusion...``). Directory names drive the classification.
+    2. **Flat layout** (all DICOMs in a single directory, as exported by
+       many PACS and vendor workstations). Series are grouped by
+       ``SeriesInstanceUID`` and classified from headers — see
+       ``_discover_dce_dicom_flat``.
 
     Parameters
     ----------
     data_path : Path
-        Visit-level (or study-level) directory.
+        Directory to search.
 
     Returns
     -------
-    tuple[list[Path], Path] | None
-        ``(vfa_dirs_sorted_by_flip_angle, perfusion_dir)`` or None
-        if the layout is not a recognizable DCE DICOM structure.
+    tuple[list[list[Path]], list[Path]] | None
+        ``(vfa_file_lists_sorted_by_flip_angle, perfusion_files)`` or
+        None if no recognizable DCE layout is found.
     """
     import re
 
     vfa_dirs: list[Path] = []
     perfusion_dir: Path | None = None
 
-    # Walk up to 3 levels to find series directories with DICOM files
+    # Pass 1: TCIA-style directory-name based discovery.
     for series_dir in _iter_series_dirs(data_path):
         name_lower = series_dir.name.lower()
         if re.search(r"ax\s+\d+\s+flip", name_lower):
@@ -253,16 +260,137 @@ def _discover_dce_dicom_series(
         elif "perfusion" in name_lower:
             perfusion_dir = series_dir
 
-    if not vfa_dirs or perfusion_dir is None:
+    if vfa_dirs and perfusion_dir is not None:
+
+        def _flip_angle_key(d: Path) -> int:
+            m = re.search(r"ax\s+(\d+)\s+flip", d.name.lower())
+            return int(m.group(1)) if m else 0
+
+        vfa_dirs.sort(key=_flip_angle_key)
+        vfa_files = [sorted(d.glob("*.dcm")) for d in vfa_dirs]
+        perfusion_files = sorted(perfusion_dir.glob("*.dcm"))
+        return vfa_files, perfusion_files
+
+    # Pass 2: flat-directory header-based discovery.
+    return _discover_dce_dicom_flat(data_path)
+
+
+def _discover_dce_dicom_flat(
+    data_path: Path,
+) -> tuple[list[list[Path]], list[Path]] | None:
+    """Discover VFA + perfusion series in a *flat* DCE DICOM directory.
+
+    Vendor workstations and PACS often export a DCE exam as one directory
+    with all series intermixed and SOP-UID filenames. This classifier
+    reads headers once and groups by ``(0020,000E) SeriesInstanceUID``,
+    then:
+
+    * identifies the dynamic (perfusion) series as the group with more
+      than one unique ``(0020,0100) TemporalPositionIdentifier`` (the
+      standard dynamic-frame index on Philips; also populated by most
+      vendors). If none qualify, falls back to the largest group.
+    * treats all other groups as VFA points, keeping only those with a
+      defined ``(0018,1314) FlipAngle`` and sorting by FA.
+
+    Files without a readable DICOM header or without a SeriesInstanceUID
+    are silently skipped. Pixel data is not touched during discovery
+    (``stop_before_pixels=True``), so this is fast even on thousands of
+    files.
+
+    Parameters
+    ----------
+    data_path : Path
+        Directory to search (only the top level is scanned).
+
+    Returns
+    -------
+    tuple[list[list[Path]], list[Path]] | None
+        ``(vfa_file_lists_sorted_by_flip_angle, perfusion_files)`` or
+        None when fewer than two distinct series are found, or when no
+        VFA candidates exist.
+    """
+    import pydicom
+    from pydicom.errors import InvalidDicomError
+
+    if not data_path.is_dir():
         return None
 
-    # Sort VFA dirs by flip angle extracted from directory name
-    def _flip_angle_key(d: Path) -> int:
-        m = re.search(r"ax\s+(\d+)\s+flip", d.name.lower())
-        return int(m.group(1)) if m else 0
+    groups: dict[str, list[Path]] = {}
+    # Per-series metadata captured during the header scan.
+    metadata: dict[str, dict[str, Any]] = {}
 
-    vfa_dirs.sort(key=_flip_angle_key)
-    return vfa_dirs, perfusion_dir
+    for f in data_path.iterdir():
+        if not f.is_file() or f.name.startswith("."):
+            continue
+        try:
+            dcm = pydicom.dcmread(f, stop_before_pixels=True)
+        except (InvalidDicomError, OSError, ValueError):
+            continue
+        uid = str(dcm.get("SeriesInstanceUID", ""))
+        if not uid:
+            continue
+        groups.setdefault(uid, []).append(f)
+        meta = metadata.setdefault(
+            uid,
+            {
+                "tpis": set(),
+                "flip_angle": None,
+                "tr": None,
+                "description": str(dcm.get("SeriesDescription", "")),
+            },
+        )
+        import contextlib
+
+        tpi = dcm.get("TemporalPositionIdentifier")
+        if tpi is not None:
+            with contextlib.suppress(TypeError, ValueError):
+                meta["tpis"].add(int(tpi))
+        if meta["flip_angle"] is None and hasattr(dcm, "FlipAngle"):
+            with contextlib.suppress(TypeError, ValueError):
+                meta["flip_angle"] = float(dcm.FlipAngle)
+        if meta["tr"] is None and hasattr(dcm, "RepetitionTime"):
+            with contextlib.suppress(TypeError, ValueError):
+                meta["tr"] = float(dcm.RepetitionTime)
+
+    if len(groups) < 2:
+        return None
+
+    # Dynamic series: the one with the most unique TemporalPositionIdentifier
+    # values. Fall back to the largest series if no TPIs are recorded.
+    dynamic_uid: str | None = None
+    best_n_tpis = 1
+    for uid, meta in metadata.items():
+        n = len(meta["tpis"])
+        if n > best_n_tpis:
+            best_n_tpis = n
+            dynamic_uid = uid
+    if dynamic_uid is None:
+        dynamic_uid = max(groups, key=lambda u: len(groups[u]))
+
+    # VFA series: everything else with a defined FlipAngle.
+    vfa_uids = [
+        uid
+        for uid in groups
+        if uid != dynamic_uid and metadata[uid]["flip_angle"] is not None
+    ]
+    if not vfa_uids:
+        return None
+
+    vfa_uids.sort(key=lambda u: metadata[u]["flip_angle"])
+    vfa_files = [sorted(groups[u]) for u in vfa_uids]
+    perfusion_files = sorted(groups[dynamic_uid])
+
+    dyn_desc = metadata[dynamic_uid]["description"] or "dynamic"
+    vfa_fa_str = ", ".join(f"{metadata[u]['flip_angle']:.0f}°" for u in vfa_uids)
+    logger.info(
+        "Flat DICOM discovery: %d VFA series (%s) + %r (%d files, %d temporal positions)",
+        len(vfa_uids),
+        vfa_fa_str,
+        dyn_desc,
+        len(perfusion_files),
+        best_n_tpis,
+    )
+    return vfa_files, perfusion_files
 
 
 def _iter_series_dirs(root: Path) -> list[Path]:
@@ -291,8 +419,13 @@ def _iter_series_dirs(root: Path) -> list[Path]:
     return results
 
 
-def _load_dicom_volume(series_dir: Path) -> tuple[np.ndarray, Any]:
+def _load_dicom_volume(source: Path | list[Path]) -> tuple[np.ndarray, Any]:
     """Load a single DICOM series as a 3D volume.
+
+    Accepts either a directory (globbed for ``*.dcm``) or an explicit list
+    of DICOM file paths — the latter is used by the flat-layout discovery
+    path, which groups files by SeriesInstanceUID without requiring them
+    to live in their own subdirectory.
 
     Returns (volume, first_dcm) where volume has shape
     ``(cols, rows, slices)`` following NIfTI transposed convention.
@@ -303,9 +436,14 @@ def _load_dicom_volume(series_dir: Path) -> tuple[np.ndarray, Any]:
 
     from osipy.common.io.dicom import _apply_pixel_scaling
 
-    dcm_files = sorted(series_dir.glob("*.dcm"))
+    if isinstance(source, Path):
+        dcm_files = sorted(source.glob("*.dcm"))
+        where = source
+    else:
+        dcm_files = sorted(source)
+        where = f"<{len(dcm_files)} files>"
     if not dcm_files:
-        msg = f"No DICOM files in {series_dir}"
+        msg = f"No DICOM files in {where}"
         raise FileNotFoundError(msg)
 
     slices: list[tuple[float, Any]] = []
@@ -328,12 +466,16 @@ def _load_dicom_volume(series_dir: Path) -> tuple[np.ndarray, Any]:
 
 
 def _load_perfusion_dicom(
-    perfusion_dir: Path,
+    source: Path | list[Path],
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
-    """Load 4D DCE perfusion data from a single DICOM series directory.
+    """Load 4D DCE perfusion data from a DICOM series.
 
-    Groups files by AcquisitionNumber (temporal position) and computes
-    the time vector from AcquisitionTime DICOM tags.
+    Accepts either a directory (globbed for ``*.dcm``) or an explicit
+    list of DICOM file paths — the latter is used by the flat-layout
+    discovery path where series live together in one directory.
+
+    Groups files by TemporalPositionIdentifier / AcquisitionNumber and
+    computes the time vector from TriggerTime / AcquisitionTime tags.
 
     Returns ``(signal_4d, time_seconds, metadata)`` where signal_4d
     has shape ``(cols, rows, slices, timepoints)``. Applies Philips +
@@ -344,9 +486,14 @@ def _load_perfusion_dicom(
 
     from osipy.common.io.dicom import _apply_pixel_scaling
 
-    dcm_files = sorted(perfusion_dir.glob("*.dcm"))
+    if isinstance(source, Path):
+        dcm_files = sorted(source.glob("*.dcm"))
+        source_label = source.name
+    else:
+        dcm_files = sorted(source)
+        source_label = f"<{len(dcm_files)} files>"
     if not dcm_files:
-        msg = f"No DICOM files in {perfusion_dir}"
+        msg = f"No DICOM files in {source_label}"
         raise FileNotFoundError(msg)
 
     # Group files by temporal position.
@@ -400,7 +547,7 @@ def _load_perfusion_dicom(
         logger.info(
             "Skipped %d non-magnitude (phase) DICOM frames in %s",
             skipped_non_magnitude,
-            perfusion_dir.name,
+            source_label,
         )
 
     min_t = min(temporal_data)
@@ -581,28 +728,33 @@ def _run_dce(config: PipelineConfig, data_path: Path, output_dir: Path) -> None:
 def _run_dce_from_dicom(
     config: PipelineConfig,
     mc: Any,
-    discovered: tuple[list[Path], Path],
+    discovered: tuple[list[list[Path]], list[Path]],
     data_path: Path,
     output_dir: Path,
 ) -> None:
-    """Run DCE pipeline from discovered DICOM VFA + perfusion series."""
+    """Run DCE pipeline from discovered DICOM VFA + perfusion series.
+
+    ``discovered`` is ``(vfa_file_lists_sorted_by_flip_angle, perfusion_files)``
+    — the same shape produced by both the nested and flat discovery
+    routines.
+    """
     from osipy.common.io.dicom import build_affine_from_dicom
     from osipy.common.parameter_map import ParameterMap
     from osipy.common.types import DCEAcquisitionParams
     from osipy.dce import compute_t1_vfa, signal_to_concentration
     from osipy.dce.fitting import fit_model
 
-    vfa_dirs, perfusion_dir = discovered
+    vfa_file_lists, perfusion_files = discovered
     acq = mc.acquisition  # type: ignore[attr-defined]
 
     # ---- Step 1: Load VFA data ----
-    logger.info("[Step 1] Loading VFA data (%d flip angles)...", len(vfa_dirs))
+    logger.info("[Step 1] Loading VFA data (%d flip angles)...", len(vfa_file_lists))
     vfa_volumes: list[np.ndarray] = []
     flip_angles: list[float] = []
     vfa_meta: dict[str, Any] | None = None
 
-    for vfa_dir in vfa_dirs:
-        vol, dcm = _load_dicom_volume(vfa_dir)
+    for vfa_files in vfa_file_lists:
+        vol, dcm = _load_dicom_volume(vfa_files)
         vfa_volumes.append(vol)
         flip_angles.append(float(dcm.FlipAngle))
         if vfa_meta is None:
@@ -624,7 +776,7 @@ def _run_dce_from_dicom(
 
     # ---- Step 2: Load perfusion data ----
     logger.info("[Step 2] Loading perfusion data...")
-    signal_4d, time_seconds, dce_meta = _load_perfusion_dicom(perfusion_dir)
+    signal_4d, time_seconds, dce_meta = _load_perfusion_dicom(perfusion_files)
     logger.info(
         "  DCE shape: %s, time: %.1f–%.1f s (dt=%.2f s)",
         signal_4d.shape,
