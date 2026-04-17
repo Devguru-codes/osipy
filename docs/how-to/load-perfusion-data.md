@@ -304,10 +304,15 @@ Multi-series layouts are detected automatically. The loader delegates to
 
 ## BIDS Batch Processing
 
+osipy itself does **not** depend on `pybids`; the BIDS reader in
+`osipy.common.io.bids` is a hand-rolled parser over stdlib + nibabel.
+The snippets below use `pybids` purely as a convenience for iterating
+subjects — install it separately (``pip install pybids``) if you need it.
+
 Process multiple subjects from a BIDS dataset:
 
 ```python
-from bids import BIDSLayout
+from bids import BIDSLayout  # requires `pip install pybids`
 import osipy
 
 layout = BIDSLayout("path/to/bids")
@@ -326,7 +331,7 @@ for subject in layout.get_subjects():
 Load multi-PLD ASL from BIDS:
 
 ```python
-from bids import BIDSLayout
+from bids import BIDSLayout  # requires `pip install pybids`
 import numpy as np
 
 layout = BIDSLayout("path/to/bids")
