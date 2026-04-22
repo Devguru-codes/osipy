@@ -438,8 +438,9 @@ to_gpu(array) / to_numpy(array)  # Transfer between CPU/GPU
 is_gpu_available() / get_backend() / set_backend()
 
 # I/O
-load_nifti(path) -> PerfusionDataset
-load_dicom(path, prompt_missing=True) -> PerfusionDataset
+load_nifti(path, modality=None, acquisition_params=None, sidecar_json=None) -> PerfusionDataset
+discover_dicom(path) -> list[SeriesInfo]
+load_dicom_series(series, modality=None) -> PerfusionDataset
 export_bids(parameter_maps, output_dir, subject_id, ...) -> Path
 
 # DCE-MRI

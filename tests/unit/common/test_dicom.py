@@ -1,16 +1,16 @@
 """Unit tests for osipy.common.io.dicom module.
 
-Tests cover:
-- Error handling for missing paths and empty directories
-- Real DICOM loading from ``data/test_dicom/`` (skipped when data absent)
+Covers:
+- Pixel-scaling helpers (``_apply_pixel_scaling``) for standard + Philips paths.
+- SeriesDescription time-extraction (``_extract_time_from_series_description``).
+- End-to-end discovery + load against real vendor DICOM data
+  (skipped when ``data/test_dicom/`` is absent).
 """
 
 from pathlib import Path
 
 import numpy as np
 import pytest
-
-from osipy.common.exceptions import IOError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -26,31 +26,11 @@ def _skip_unless(path: Path) -> None:
         pytest.skip(f"Data not found: {path}")
 
 
-# ---------------------------------------------------------------------------
-# Error handling (no real data needed)
-# ---------------------------------------------------------------------------
-
-
-class TestLoadDicom:
-    """Tests for load_dicom function."""
-
-    def test_path_not_found(self) -> None:
-        """Test that missing path raises FileNotFoundError."""
-        from osipy.common.io.dicom import load_dicom
-
-        with pytest.raises(FileNotFoundError):
-            load_dicom("/nonexistent/path")
-
-    def test_no_dicom_files(self, tmp_path: Path) -> None:
-        """Test that directory with no DICOM files raises IOError."""
-        from osipy.common.io.dicom import load_dicom
-
-        # Create empty directory
-        empty_dir = tmp_path / "empty"
-        empty_dir.mkdir()
-
-        with pytest.raises(IOError, match="No valid DICOM"):
-            load_dicom(empty_dir)
+def _find_dcm_leaf(root: Path) -> Path | None:
+    """Return the first directory under *root* that contains ``.dcm`` files."""
+    for p in sorted(root.rglob("*.dcm")):
+        return p.parent
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -59,62 +39,30 @@ class TestLoadDicom:
 
 
 @pytest.mark.localdata
-class TestLoadDicomRealData:
-    """Load real DICOM files from ``data/test_dicom/``."""
+class TestDiscoverAndLoadRealData:
+    """``discover_dicom`` + ``load_dicom_series`` on real vendor DICOMs."""
 
-    @pytest.mark.parametrize(
-        "vendor",
-        ["ge", "siemens", "philips"],
-    )
+    @pytest.mark.parametrize("vendor", ["ge", "siemens", "philips"])
     def test_load_vendor_dce(self, vendor: str) -> None:
-        """load_dicom returns a PerfusionDataset for each vendor's DCE data."""
         from osipy.common.dataset import PerfusionDataset
-        from osipy.common.io.dicom import load_dicom
+        from osipy.common.io.discovery import discover_dicom, load_dicom_series
 
         vendor_dir = _TEST_DICOM_DIR / vendor / "dce"
         _skip_unless(vendor_dir)
 
-        # Walk down to find the first directory that actually contains .dcm files
         dcm_dir = _find_dcm_leaf(vendor_dir)
         if dcm_dir is None:
             pytest.skip(f"No .dcm files found under {vendor_dir}")
 
-        ds = load_dicom(dcm_dir, prompt_missing=False)
+        series_list = discover_dicom(dcm_dir)
+        assert series_list, f"No series discovered under {dcm_dir}"
+
+        ds = load_dicom_series(series_list[0])
         assert isinstance(ds, PerfusionDataset)
-        assert ds.data.ndim >= 3, f"Expected >=3-D data, got {ds.data.ndim}-D"
+        assert ds.data.ndim >= 3
         assert ds.data.size > 0
         assert np.isfinite(ds.data).any()
-
-    @pytest.mark.parametrize(
-        "vendor",
-        ["ge", "siemens", "philips"],
-    )
-    def test_metadata_extracted(self, vendor: str) -> None:
-        """Loaded dataset has non-empty acquisition metadata."""
-        from osipy.common.io.dicom import load_dicom
-
-        vendor_dir = _TEST_DICOM_DIR / vendor / "dce"
-        _skip_unless(vendor_dir)
-
-        dcm_dir = _find_dcm_leaf(vendor_dir)
-        if dcm_dir is None:
-            pytest.skip(f"No .dcm files found under {vendor_dir}")
-
-        ds = load_dicom(dcm_dir, prompt_missing=False)
-        acq = ds.acquisition_params
-        assert acq is not None, "acquisition_params should not be None"
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _find_dcm_leaf(root: Path) -> Path | None:
-    """Return the first directory under *root* that contains ``.dcm`` files."""
-    for p in sorted(root.rglob("*.dcm")):
-        return p.parent
-    return None
+        assert ds.acquisition_params is not None
 
 
 # ---------------------------------------------------------------------------
