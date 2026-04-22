@@ -120,8 +120,8 @@ class DCEFittingConfig(BaseModel):
         json_schema_extra={
             "yaml_example": (
                 "Ktrans: [0.0, 5.0]        # [lower, upper], 1/min\n"
-                "ve: [0.001, 1.0]          # [lower, upper], mL/100mL\n"
-                "vp: [0.0, 0.2]            # [lower, upper], mL/100mL"
+                "ve: [0.001, 1.0]          # [lower, upper], fraction [0, 1]\n"
+                "vp: [0.0, 0.2]            # [lower, upper], fraction [0, 1]"
             )
         },
     )
@@ -131,8 +131,8 @@ class DCEFittingConfig(BaseModel):
         json_schema_extra={
             "yaml_example": (
                 "Ktrans: 0.1               # 1/min\n"
-                "ve: 0.2                   # mL/100mL\n"
-                "vp: 0.02                  # mL/100mL"
+                "ve: 0.2                   # fraction [0, 1]\n"
+                "vp: 0.02                  # fraction [0, 1]"
             )
         },
     )
